@@ -28,7 +28,7 @@ v2.0 起升级为**完整的壁纸资源管理库**：上传、编辑、删除�
 ### 方式一：Git 安装（推荐）
 
 ```bash
-hermes plugins install https://github.com/<你的用户名>/hermes-chat-wallpaper.git
+hermes plugins install https://github.com/baizilong212/hermes-chat-wallpaper.git
 hermes plugins enable chat-wallpaper
 ```
 
@@ -37,7 +37,7 @@ hermes plugins enable chat-wallpaper
 ### 方式二：手动安装
 
 ```bash
-git clone https://github.com/<你的用户名>/hermes-chat-wallpaper.git "$HOME/.hermes/plugins/chat-wallpaper"
+git clone https://github.com/baizilong212/hermes-chat-wallpaper.git "$HOME/.hermes/plugins/chat-wallpaper"
 hermes plugins enable chat-wallpaper
 ```
 
