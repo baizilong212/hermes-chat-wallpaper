@@ -1478,6 +1478,21 @@ export default {
     document.body.append(panelEl)
     loadLibraryConfigIntoPanel().catch(() => {})   // 回填壁纸库根目录配置（后端未就绪则静默）
 
+    // 重启/统一包同步会整目录重建 desktop-plugins/<id>/，运行时索引与缩略图随之被清。
+    // 探测到索引缺失时让后端静默重建（后台线程 + 增量缩略图），无需用户手点【刷新壁纸索引】。
+    try {
+      const probeBridge = window.hermesDesktop?.readFileText
+      if (typeof probeBridge === 'function' && INDEX_PATH && ctxRef?.rest) {
+        probeBridge(INDEX_PATH).then(res => {
+          const txt = res && (res.text ?? res)
+          if (typeof txt !== 'string') {
+            log('启动探测：索引缺失，触发后台静默重建')
+            ctxRef.rest('/index/refresh', { method: 'POST', body: { plugin_dir: PLUGIN_DIR } }).catch(() => {})
+          }
+        }, () => {})
+      }
+    } catch { /* 探测失败静默：用户仍可手动刷新 */ }
+
     escClose = e => {
       if (e.key === 'Escape') {
         panelEl?.classList.remove('open')
