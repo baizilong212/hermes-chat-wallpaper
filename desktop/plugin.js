@@ -468,6 +468,8 @@ function repaint() {
       display: flex; align-items: center; justify-content: center;
       background: rgba(0, 0, 0, .45);
     }
+    /* 挂在壁纸库容器内时：以壁纸库弹窗（position:fixed）为包含块，随其居中 */
+    .cw-modal.cw-in-browser { position: absolute; }
     .cw-box {
       width: min(460px, calc(100vw - 48px));
       max-height: min(70vh, 560px);
@@ -830,6 +832,9 @@ function modalOpen({ title, bodyBuilder, buttons }) {
   return new Promise(resolve => {
     const overlay = document.createElement('div')
     overlay.className = 'cw-modal'
+    // 壁纸库打开时：弹窗挂进壁纸库容器内并改为绝对定位 → 在壁纸库弹窗中居中，而非整页居中
+    const inBrowser = !!(browserEl && browserEl.classList.contains('open'))
+    if (inBrowser) overlay.classList.add('cw-in-browser')
     const box = document.createElement('div')
     box.className = 'cw-box'
     const head = document.createElement('div')
@@ -869,7 +874,8 @@ function modalOpen({ title, bodyBuilder, buttons }) {
     }
     box.append(head, body, foot)
     overlay.append(box)
-    document.body.append(overlay)
+    const mount = inBrowser ? browserEl : document.body
+    mount.append(overlay)
     setTimeout(() => body.querySelector('input')?.focus(), 50)
   })
 }
