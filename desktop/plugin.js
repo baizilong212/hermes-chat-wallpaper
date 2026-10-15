@@ -854,7 +854,7 @@ function modalOpen({ title, bodyBuilder, buttons }) {
       resolve(val)
     }
     close.addEventListener('click', () => finish(null))
-    overlay.addEventListener('pointerdown', ev => { if (ev.target === overlay) finish(null) })
+    // 蒙层空白区域无响应：只有 ✕ / 取消 / 保存 / Esc 能关闭弹窗（点击蒙层不做任何事）
     const esc = ev => {
       if (ev.key === 'Escape') { ev.stopPropagation(); finish(null) }
     }
@@ -1487,6 +1487,8 @@ export default {
     document.addEventListener('keydown', escClose)
 
     onOutsideClick = e => {
+      // 通用弹窗（编辑/删除/错误）内的任何点击都不触发下层窗口的“点击外部关闭”
+      if (e.target instanceof Element && e.target.closest('.cw-modal')) return
       if (browserEl?.classList.contains('open') && !browserEl.contains(e.target)) {
         const weBtn = document.getElementById(`${PANEL_ID}-we`)
         if (weBtn && weBtn.contains(e.target)) return
