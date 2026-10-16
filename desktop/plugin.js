@@ -26,6 +26,8 @@ const STYLE_ID = 'chat-wallpaper-style'
 const UI_ID = 'chat-wallpaper-ui'
 const PANEL_ID = 'chat-wallpaper-panel'
 const BROWSER_ID = 'chat-wallpaper-browser'
+const SPLASH_ID = 'chat-wallpaper-splash'
+const SPLASH_SESSION_KEY = 'cw-boot-splash-shown'
 
 const DEFAULTS = { dim: 0.42, bubble: 0.68, card: 0.6, darken: 1.0 }
 
@@ -89,6 +91,7 @@ let onHashChange = null
 let insertedOnce = false
 let weIndex = null // {we, n, items:[{id,t,p,th,hd,y,w,h}]}
 let currentWeId = null
+let currentSplashId = null
 let wePage = 0
 let disabled = false // 「恢复默认外观」：界面可用但视觉层撤下
 let ctxRef = null            // register(ctx) 保存的上下文（后端 REST 用）
@@ -222,9 +225,9 @@ function repaint() {
     }
     /* ── 操作按钮（原生次级按钮风格）── */
     #${PANEL_ID} .wp-pickrow { margin: 2px 0 4px; }
-    #${PANEL_ID}-pick,
     #${PANEL_ID}-we,
-    #${PANEL_ID}-reset {
+    #${PANEL_ID}-reset-chat,
+    #${PANEL_ID}-reset-splash {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
       width: 100%;
       height: 30px;
@@ -238,17 +241,17 @@ function repaint() {
       padding: 0 10px;
       transition: background .12s ease;
     }
-    #${PANEL_ID}-we, #${PANEL_ID}-reset { margin-top: 6px; }
-    #${PANEL_ID}-reset { color: var(--ui-text-secondary, var(--dt-muted-foreground, #8b949e)); }
-    #${PANEL_ID}-pick:hover,
+    #${PANEL_ID}-we, #${PANEL_ID}-reset-chat, #${PANEL_ID}-reset-splash { margin-top: 6px; }
+    #${PANEL_ID}-reset-chat, #${PANEL_ID}-reset-splash { color: var(--ui-text-secondary, var(--dt-muted-foreground, #8b949e)); }
     #${PANEL_ID}-we:hover,
-    #${PANEL_ID}-reset:hover {
+    #${PANEL_ID}-reset-chat:hover,
+    #${PANEL_ID}-reset-splash:hover {
       background: var(--chrome-action-hover, var(--ui-control-hover-background, rgba(128,128,128,.18)));
       color: var(--ui-text-primary, var(--dt-foreground, #e6edf3));
     }
-    #${PANEL_ID}-pick .codicon,
     #${PANEL_ID}-we .codicon,
-    #${PANEL_ID}-reset .codicon { font-size: 14px; line-height: 1; }
+    #${PANEL_ID}-reset-chat .codicon,
+    #${PANEL_ID}-reset-splash .codicon { font-size: 14px; line-height: 1; }
     /* ── Wallpaper Engine 壁纸库浏览窗 ── */
     #${BROWSER_ID} {
       display: none;
@@ -348,6 +351,16 @@ function repaint() {
     #${BROWSER_ID} .wb-type {
       font-size: 10px;
       color: var(--ui-text-tertiary, #8b949e);
+      display: flex; align-items: center;
+    }
+    #${BROWSER_ID} .wb-type-text {
+      min-width: 0; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    #${BROWSER_ID} .wb-badges {
+      margin-left: auto; margin-right: 4px;   /* 与卡片右边框留一点距离 */
+      display: flex; align-items: center; gap: 4px;
+      flex: none;
     }
     #${BROWSER_ID} .wb-hd {
       display: inline-block;
@@ -365,7 +378,14 @@ function repaint() {
       font-size: 9px;
       font-weight: 600;
       color: var(--ui-accent, #6f9bff);
-      margin-left: 4px;
+      margin-left: 0;
+    }
+    #${BROWSER_ID} .wb-splash {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 600;
+      color: #7ee787;
+      margin-left: 0;
     }
     #${BROWSER_ID} .wb-empty {
       grid-column: 1 / -1; text-align: center;
@@ -461,6 +481,7 @@ function repaint() {
       color: #e6edf3; padding: 0;
     }
     #${BROWSER_ID} .wb-act:hover { background: rgba(0, 0, 0, .78); }
+    #${BROWSER_ID} .wb-act:disabled { opacity: .5; cursor: default; }
     #${BROWSER_ID} .wb-act .codicon { font-size: 13px; line-height: 1; }
     /* ── 通用弹窗（确认 / 错误日志 / 编辑）── */
     .cw-modal {
@@ -550,6 +571,29 @@ function repaint() {
     #${PANEL_ID} .wp-libbrowse:hover { background: var(--chrome-action-hover, rgba(128,128,128,.18)); }
     #${PANEL_ID} .wp-libsave:disabled,
     #${PANEL_ID} .wp-libbrowse:disabled { opacity: .5; cursor: default; }
+    /* ── 启动壁纸 Splash（原图铺满展现：不加遮罩/透明度/取色）── */
+    #${SPLASH_ID} {
+      position: fixed; inset: 0;
+      z-index: 2147483500;
+      background-size: cover; background-position: center; background-repeat: no-repeat;
+      opacity: 0; transition: opacity .4s ease;
+      pointer-events: none;
+    }
+    #${SPLASH_ID}.show { opacity: 1; }
+    /* ── 卡片点击弹窗：设置对话/启动壁纸 ── */
+    .cw-pick { display: flex; gap: 12px; align-items: center; }
+    .cw-pick-img {
+      width: 132px; height: 76px; object-fit: cover; flex: none;
+      border-radius: calc(var(--radius-scalar, 1) * 0.375rem);
+      border: 1px solid var(--dt-border, rgba(240, 246, 252, 0.12));
+      background: color-mix(in srgb, var(--theme-background-seed, #0d1117) 70%, transparent);
+    }
+    .cw-pick-info { min-width: 0; }
+    .cw-pick-name {
+      font-size: 13px; color: var(--ui-text-primary, #e6edf3);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .cw-pick-type { font-size: 11.5px; color: var(--ui-text-secondary, #c9d1d9); margin-top: 4px; }
   `
   if (styleEl.styleSheet) {
     styleEl.styleSheet.cssText = css
@@ -661,16 +705,6 @@ function buildPanel() {
   })
   panel.append(libSec)
 
-  const pickRow = document.createElement('div')
-  pickRow.className = 'wp-pickrow'
-  const pickBtn = document.createElement('button')
-  pickBtn.id = `${PANEL_ID}-pick`
-  pickBtn.type = 'button'
-  pickBtn.innerHTML = '<i class="codicon codicon-add-photo" aria-hidden="true"></i><span>换壁纸…</span>'
-  pickBtn.addEventListener('click', onPickWallpaper)
-  pickRow.append(pickBtn)
-  panel.append(pickRow)
-
   const weRow = document.createElement('div')
   weRow.className = 'wp-pickrow'
   const weBtn = document.createElement('button')
@@ -681,33 +715,52 @@ function buildPanel() {
   weRow.append(weBtn)
   panel.append(weRow)
 
-  const resetRow = document.createElement('div')
-  resetRow.className = 'wp-pickrow'
-  const resetBtn = document.createElement('button')
-  resetBtn.id = `${PANEL_ID}-reset`
-  resetBtn.type = 'button'
-  function syncResetBtn() {
-    resetBtn.innerHTML = disabled
-      ? '<i class="codicon codicon-activate-breakpoints" aria-hidden="true"></i><span>重新启用壁纸</span>'
-      : '<i class="codicon codicon-discard" aria-hidden="true"></i><span>恢复默认外观</span>'
-  }
-  syncResetBtn()
-  resetBtn.addEventListener('click', () => {
-    disabled = !disabled
-    storage?.set('disabled', disabled)
-    log(disabled ? '恢复默认外观：视觉层撤下' : '重新启用壁纸：视觉层恢复')
-    syncResetBtn()
-    panelEl?.classList.remove('open')
-    browserEl?.classList.remove('open')
+  // ── 恢复对话默认外观：只清对话壁纸（用户钦定两角色独立清除）──
+  const resetChatRow = document.createElement('div')
+  resetChatRow.className = 'wp-pickrow'
+  const resetChatBtn = document.createElement('button')
+  resetChatBtn.id = `${PANEL_ID}-reset-chat`
+  resetChatBtn.type = 'button'
+  resetChatBtn.innerHTML = '<i class="codicon codicon-discard" aria-hidden="true"></i><span>恢复对话默认外观</span>'
+  resetChatBtn.addEventListener('click', () => {
+    storage?.set('srcPath', '')
+    currentWeId = null
+    disabled = true
+    storage?.set('disabled', true)
+    if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null }
+    rawAvg = null
     repaint()
+    const grid = browserEl?.querySelector('.wb-grid')
+    if (grid) updateCardBadges(grid)
+    log('已恢复对话默认外观：对话壁纸设置已清除（启动壁纸不受影响）')
+    panelEl?.classList.remove('open')
   })
-  resetRow.append(resetBtn)
-  panel.append(resetRow)
+  resetChatRow.append(resetChatBtn)
+  panel.append(resetChatRow)
+
+  // ── 恢复启动默认外观：只清启动壁纸 ──
+  const resetSplashRow = document.createElement('div')
+  resetSplashRow.className = 'wp-pickrow'
+  const resetSplashBtn = document.createElement('button')
+  resetSplashBtn.id = `${PANEL_ID}-reset-splash`
+  resetSplashBtn.type = 'button'
+  resetSplashBtn.innerHTML = '<i class="codicon codicon-discard" aria-hidden="true"></i><span>恢复启动默认外观</span>'
+  resetSplashBtn.addEventListener('click', () => {
+    storage?.set('splashSrc', '')
+    storage?.set('splashId', '')
+    currentSplashId = null
+    const grid = browserEl?.querySelector('.wb-grid')
+    if (grid) updateCardBadges(grid)
+    log('已恢复启动默认外观：启动壁纸设置已清除（对话壁纸不受影响）')
+    panelEl?.classList.remove('open')
+  })
+  resetSplashRow.append(resetSplashBtn)
+  panel.append(resetSplashRow)
 
 
   const foot = document.createElement('div')
   foot.className = 'wp-foot'
-  foot.textContent = '配色自动取自壁纸。「恢复默认外观」一键回到应用原生主题，再点「重新启用壁纸」恢复。'
+  foot.textContent = '配色自动取自壁纸。「恢复对话默认外观」只清除对话壁纸；「恢复启动默认外观」只清除启动动画。重新设置请到壁纸库选择素材。'
   panel.append(foot)
 
   panel.querySelectorAll('input[type=range]').forEach(input => {
@@ -974,6 +1027,19 @@ async function pollIndexStatus() {
     return
   }
   setWeMyprojectsHint(st.is_we_myprojects)
+  // 「转动图」任务进度（WE 规则4：UI 带进度提示）
+  const animErr = st.anim && st.anim.error ? String(st.anim.error) : ''
+  if (animErr && animErr !== lastAnimError) {
+    lastAnimError = animErr
+    errorModal('转动图失败', animErr)
+    setBrowserStatus('转动图失败：' + animErr.slice(0, 100))
+    return
+  }
+  if (!animErr) lastAnimError = ''
+  if (st.anim && st.anim.running) {
+    setBrowserStatus('⏳ 正在转动图…（本地转码，完成后列表自动刷新）')
+    return
+  }
   if (st.running) {
     if (!indexRunningSeen) setToolsDisabled(true)
     indexRunningSeen = true
@@ -1013,6 +1079,33 @@ function stopIndexPolling() {
 
 let indexRunningSeen = false
 let lastReloadedFinishedAt = 0   // 上次从磁盘重载列表时的构建完成时间戳
+let lastAnimError = ''           // 转动图失败弹窗去重
+const pendingAnimIds = new Set() // 动图转换中的素材 id（上传响应/状态轮询标记，转换完成后清除）
+
+/** WE 规则3：【转动图】——提取项目内 mp4 本地转码为动图；进度走 /status.anim 轮询 */
+async function onConvertAnim(it, btn) {
+  if (btn) btn.disabled = true
+  setBrowserStatus('⏳ 正在转动图：' + it.t + '（本地转码中，完成后列表自动刷新）')
+  try {
+    const r = await api('/wallpaper/convert-anim', { method: 'POST', body: { id: it.id, plugin_dir: PLUGIN_DIR } })
+    if (r.skipped) {
+      setBrowserStatus('该素材已有动图，无需转换')
+      if (btn) btn.disabled = false
+      return
+    }
+    log('转动图已启动：' + it.t + '（源 ' + r.src + '）')
+    startIndexPolling()   // 1.2s 轮询进度；完成触发索引刷新 → finished_at 链自动重载列表
+  } catch (e) {
+    if (btn) btn.disabled = false
+    setBrowserStatus('')
+    const msg = apiErrorText(e)
+    if (/not\s*found/i.test(msg)) {
+      errorModal('转动图接口未加载', '请完全退出并重启 Hermes 应用后重试。\n（注：上传的 mp4 会自动转动图，无需手动点此按钮）')
+    } else {
+      errorModal('转动图失败', msg)
+    }
+  }
+}
 
 async function onRefreshIndexClick() {
   setToolsDisabled(true)
@@ -1035,9 +1128,9 @@ async function onUploadWallpaper() {
   let paths
   try {
     paths = await pick({
-      title: '选择壁纸文件（jpg / png / mp4，单选）',
+      title: '选择壁纸文件（jpg / png / gif / webp / mp4，单选）',
       multiple: false,
-      filters: [{ name: '壁纸文件', extensions: ['jpg', 'jpeg', 'png', 'mp4'] }],
+      filters: [{ name: '壁纸文件', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4'] }],
     })
   } catch {
     return
@@ -1050,7 +1143,9 @@ async function onUploadWallpaper() {
     const r = await api('/wallpaper/upload', { method: 'POST', body: { src_path: src, plugin_dir: PLUGIN_DIR } })
     const warn = (r.warnings && r.warnings.length) ? '；警告：' + r.warnings.join('；') : ''
     log(`上传成功：${r.folder}（${r.title}）` + warn)
-    setBrowserStatus(`✓ 已入库：${r.title}（${r.folder}）` + (r.preview ? '' : '（无预览图）'))
+    if (r.anim_converting) pendingAnimIds.add(r.folder)   // 转换中：卡片显示提示、隐藏手动按钮
+    const conv = r.anim_converting ? '；⏳ MP4→动图 后台转换中（约 1~2 分钟，完成后卡片自动变为动图）' : ''
+    setBrowserStatus(`✓ 已入库：${r.title}（${r.folder}）` + (r.preview ? '' : '（无预览图）') + conv)
     if (warn) errorModal('上传完成，但有警告', warn)
     startIndexPolling()   // 后端已自动触发刷新，轮询接管并重载列表
   } catch (e) {
@@ -1071,6 +1166,22 @@ async function onDeleteWallpaper(it) {
   try {
     await api('/wallpaper/delete', { method: 'POST', body: { id: it.id, plugin_dir: PLUGIN_DIR } })
     log('已物理删除壁纸：' + it.id)
+    // 清理指向该素材的壁纸引用：ID 会被同日后续上传复用，残留引用会误标/误用到新素材
+    const norm = s => String(s).replace(/\\/g, '/').toLowerCase()
+    const folder = weIndex?.we ? norm(joinPath(weIndex.we, it.id)) : ''
+    if (folder) {
+      for (const [key, label, isSplash] of [['srcPath', '对话', false], ['splashSrc', '启动', true]]) {
+        const v = storage?.get(key, null)
+        if (typeof v === 'string' && v && norm(v).startsWith(folder + '/')) {
+          storage?.set(key, '')
+          if (isSplash) { storage?.set('splashId', ''); currentSplashId = null }
+          else { currentWeId = null }
+          log(`已清除${label}壁纸引用（素材「${it.t}」已删除）`)
+        }
+      }
+      const grid = browserEl?.querySelector('.wb-grid')
+      if (grid) updateCardBadges(grid)
+    }
     await reloadIndexFromDisk()
     startIndexPolling()
   } catch (e) {
@@ -1120,6 +1231,8 @@ async function loadLibraryConfigIntoPanel() {
 const TYPE_LABEL = { scene: '动态场景', web: '网页', video: '视频', application: '应用', image: '图片' }
 
 function weFullSrc(item) {
+  // 动图源优先（mp4 转换产物 anim.webp / 直接上传的 gif/webp）：CSS 背景可播放动画
+  if (item.g && weIndex?.we) return joinPath(joinPath(weIndex.we, item.id), item.g)
   if (item.hd) return joinPath(PLUGIN_DIR, item.hd)
   if (!item.p) return null
   return joinPath(joinPath(weIndex.we, item.id), item.p)
@@ -1162,7 +1275,7 @@ function buildWeBrowser() {
       <button class="wb-tbtn" type="button" id="${BROWSER_ID}-refresh" title="重新扫描壁纸库目录并重建索引">
         <i class="codicon codicon-refresh" aria-hidden="true"></i><span>刷新壁纸索引</span>
       </button>
-      <button class="wb-tbtn" type="button" id="${BROWSER_ID}-upload" title="从本机选择 jpg / png / mp4 文件入库（自动建目录、生成预览与元数据）">
+      <button class="wb-tbtn" type="button" id="${BROWSER_ID}-upload" title="从本机选择 jpg / png / gif / webp / mp4 文件入库（自动建目录、生成预览与元数据；mp4 自动转动图）">
         <i class="codicon codicon-cloud-upload" aria-hidden="true"></i><span>上传壁纸文件</span>
       </button>
       <button class="wb-close" type="button" aria-label="关闭" title="关闭">
@@ -1309,8 +1422,11 @@ function renderWePage(grid, items) {
     card.setAttribute('tabindex', '0')
     card.title = it.t
     card.dataset.wid = it.id
+    card.dataset.gpath = weFullSrc(it) || ''
     const thumbSrc = weThumbSrc(it)
-    const typeLabel = TYPE_LABEL[it.y] || it.y || '壁纸'
+    // 有动图源的素材一律显示「动图」（mp4 转出 / 直接上传的 gif/webp）
+    const typeLabel = it.g ? '动图'
+      : (TYPE_LABEL[it.y] || it.y || '壁纸') + (pendingAnimIds.has(it.id) ? '（转换中…）' : '')
     const resText = it.w ? `${it.w}×${it.h}` : ''
     const arText = aspectRatio(it.w, it.h)
     card.innerHTML = `
@@ -1318,14 +1434,29 @@ function renderWePage(grid, items) {
         style="width:100%;height:84px;object-fit:cover;display:block;flex:none">
       <div class="wb-meta">
         <div class="wb-name">${it.t.replace(/</g, '&lt;')}${it.hd ? ' <span class="wb-hd">HD</span>' : ''}</div>
-        <div class="wb-type">${typeLabel}${resText ? ` · ${resText}${arText ? ` · ${arText}` : ''}` : ''}</div>
+        <div class="wb-type">
+          <span class="wb-type-text">${typeLabel}${resText ? ` · ${resText}${arText ? ` · ${arText}` : ''}` : ''}</span>
+          <span class="wb-badges"></span>
+        </div>
       </div>
     `
-    const pick = () => applyWeWallpaper(it, card)
+    const pick = () => openApplyModal(it, card)
     card.addEventListener('click', pick)
     card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick() } })
     const acts = document.createElement('div')
     acts.className = 'wb-acts'
+    if (it.g) pendingAnimIds.delete(it.id)   // 已有动图 = 转换完成
+    const busy = pendingAnimIds.has(it.id)
+    // WE 规则3：视频/场景/网页项目且尚无动图、且不在自动转换中 → 【转动图】按钮
+    if (!it.g && !busy && (it.y === 'video' || it.y === 'scene' || it.y === 'web')) {
+      const convBtn = document.createElement('button')
+      convBtn.type = 'button'
+      convBtn.className = 'wb-act'
+      convBtn.title = '转动图：提取项目内 mp4，本地转码为动图（完成后列表自动刷新）'
+      convBtn.innerHTML = '<i class="codicon codicon-sync" aria-hidden="true"></i>'
+      convBtn.addEventListener('click', ev => { ev.stopPropagation(); onConvertAnim(it, convBtn) })
+      acts.append(convBtn)
+    }
     const editBtn = document.createElement('button')
     editBtn.type = 'button'
     editBtn.className = 'wb-act'
@@ -1344,25 +1475,39 @@ function renderWePage(grid, items) {
     const img = card.querySelector('.wb-thumb')
     if (thumbSrc) io.observe(img)
   }
-  markActiveCard(grid)
+  updateCardBadges(grid)
 }
 
-function markActiveCard(grid) {
-  if (!grid || !currentWeId) return
+/** 卡片角色角标：「对话中」= 当前对话壁纸；「启动中」= 当前启动壁纸（同一张可同时两个） */
+function updateCardBadges(grid) {
+  if (!grid) return
+  const chatPath = storage?.get('srcPath', null) || ''
+  const splashPath = storage?.get('splashSrc', null) || ''
   grid.querySelectorAll('.wb-card').forEach(c => {
-    const on = c.dataset.wid === currentWeId
-    c.classList.toggle('wb-active', on)
-    if (on && !c.querySelector('.wb-using')) {
+    c.querySelectorAll('.wb-using, .wb-splash').forEach(t => t.remove())
+    const gp = c.dataset.gpath || ''
+    const onChat = (currentWeId && c.dataset.wid === currentWeId) || (gp && gp === chatPath)
+    const onSplash = (currentSplashId && c.dataset.wid === currentSplashId) || (gp && gp === splashPath)
+    c.classList.toggle('wb-active', !!onChat)
+    const metaEl = c.querySelector('.wb-badges')   // 角标挂类型行右侧容器
+    if (!metaEl) return
+    if (onChat) {
       const tag = document.createElement('span')
       tag.className = 'wb-using'
-      tag.textContent = '✓ 使用中'
-      c.querySelector('.wb-meta')?.append(tag)
+      tag.textContent = '对话中'
+      metaEl.append(tag)
+    }
+    if (onSplash) {
+      const tag = document.createElement('span')
+      tag.className = 'wb-splash'
+      tag.textContent = '启动中'
+      metaEl.append(tag)
     }
   })
 }
 
 async function applyWeWallpaper(it, card) {
-  const src = weFullSrc(it)
+  const src = await resolveAnimSrc(weFullSrc(it))
   if (!src) { log('!!! 这张壁纸没有可用的预览图'); return }
   log('选用 WE 壁纸（预览不关窗）: ' + it.t)
   const bridge = window.hermesDesktop?.readFileDataUrl
@@ -1377,20 +1522,170 @@ async function applyWeWallpaper(it, card) {
     applyWallpaperBlob(blob, it.t)
     repaint()
     const grid = browserEl?.querySelector('.wb-grid')
-    if (grid) {
-      grid.querySelectorAll('.wb-using').forEach(t => t.remove())
-      grid.querySelectorAll('.wb-active').forEach(c => c.classList.remove('wb-active'))
-      if (card) {
-        card.classList.add('wb-active')
-        const tag = document.createElement('span')
-        tag.className = 'wb-using'
-        tag.textContent = '✓ 使用中'
-        card.querySelector('.wb-meta')?.append(tag)
-      }
-    }
+    if (grid) updateCardBadges(grid)
   } catch (e) {
     log('!!! 应用 WE 壁纸失败: ' + (e?.message || e))
   }
+}
+
+// ── 卡片点击弹窗：设置对话壁纸 / 设置启动壁纸（二者独立，可同为一张素材）──
+async function openApplyModal(it, card) {
+  const choice = await modalOpen({
+    title: '设置壁纸',
+    bodyBuilder: b => {
+      const wrap = document.createElement('div')
+      wrap.className = 'cw-pick'
+      const img = document.createElement('img')
+      img.className = 'cw-pick-img'
+      img.alt = ''
+      const thumbSrc = weThumbSrc(it)
+      if (thumbSrc) {
+        const bridge = window.hermesDesktop?.readFileDataUrl
+        if (typeof bridge === 'function') bridge(thumbSrc).then(u => { img.src = u }).catch(() => {})
+      }
+      const info = document.createElement('div')
+      info.className = 'cw-pick-info'
+      const name = document.createElement('div')
+      name.className = 'cw-pick-name'
+      name.textContent = it.t
+      const type = document.createElement('div')
+      type.className = 'cw-pick-type'
+      type.textContent = (it.g ? '动图' : (TYPE_LABEL[it.y] || it.y || '壁纸')) +
+        '　—　选择用途：对话壁纸即时生效；启动壁纸在下次启动 Splash 显示'
+      info.append(name, type)
+      wrap.append(img, info)
+      b.append(wrap)
+    },
+    buttons: [
+      { label: '设置对话壁纸', result: () => 'chat' },   // 与「设置启动壁纸」同款普通样式（用户钦定）
+      { label: '设置启动壁纸', result: () => 'splash' },
+    ],
+  })
+  if (choice === 'chat') await applyWeWallpaper(it, card)
+  else if (choice === 'splash') await applySplashWallpaper(it, card)
+}
+
+/** 设置启动壁纸：只写 splashSrc/splashId，不影响当前对话壁纸 */
+async function applySplashWallpaper(it, card) {
+  const src = await resolveAnimSrc(weFullSrc(it))
+  if (!src) { errorModal('设置失败', '这张壁纸没有可用的图像文件'); return }
+  const bridge = window.hermesDesktop?.readFileDataUrl
+  if (typeof bridge !== 'function') return
+  try {
+    await bridge(src)   // 预读校验：文件可读才允许设为启动壁纸
+    storage?.set('splashSrc', src)
+    storage?.set('splashId', it.id)
+    currentSplashId = it.id
+    log('已设置启动壁纸: ' + it.t + '（' + src + '）')
+    const grid = browserEl?.querySelector('.wb-grid')
+    if (grid) updateCardBadges(grid)
+    setBrowserStatus('✓ 已设为启动壁纸：' + it.t + '（下次启动 Splash 显示）')
+  } catch (e) {
+    errorModal('设置启动壁纸失败', e?.message || String(e))
+  }
+}
+
+/** 若路径指向素材的静态预览图，而素材有动图源（project.json 的 anim/gif 字段），返回动图路径。
+ *  直接读素材元数据，不依赖索引 g 字段 —— 索引会被旧后端重建丢字段，素材文件不会。 */
+async function resolveAnimSrc(path) {
+  if (typeof path !== 'string' || !path || !/preview\.[a-z]+$/i.test(path)) return path
+  try {
+    const bridge = window.hermesDesktop?.readFileText
+    if (typeof bridge !== 'function') return path
+    const folder = path.replace(/[\\/][^\\/]+$/, '')
+    const res = await bridge(joinPath(folder, 'project.json'))
+    const meta = JSON.parse(res.text ?? res)
+    const anim = meta && (meta.anim || meta.gif)
+    if (anim) return joinPath(folder, anim)
+  } catch { /* 元数据读不到：维持原路径 */ }
+  return path
+}
+
+/** 用户此刻真的“看得见”对话页：composer 已渲染、有实际尺寸，且其中心点
+ *  命中测试落在 composer 自己身上（没被 CONNECTING 等全屏启动浮层盖住）。
+ *  注意 CONNECTING 只是浮层，聊天 DOM 早已挂在它底下 —— 只查元素存在会误判。
+ *  本插件的 Splash 覆盖层 pointer-events:none，不参与命中测试，不干扰判断。 */
+function chatActuallyVisible() {
+  const composer = document.querySelector('[data-slot="composer-root"], [data-slot="composer-rich-input"]')
+  if (!composer) return false
+  const r = composer.getBoundingClientRect()
+  if (r.width < 10 || r.height < 10) return false
+  const cx = Math.min(window.innerWidth - 2, Math.max(2, r.left + r.width / 2))
+  const cy = Math.min(window.innerHeight - 2, Math.max(2, r.top + r.height / 2))
+  const top = document.elementFromPoint(cx, cy)
+  return !!top && (top === composer || composer.contains(top) || top.contains(composer))
+}
+
+/** 自愈：storage 里的对话/启动壁纸若存成了静态预览图，纠正为动图源
+ *  （历史上“设置时索引缺 g 字段”会存成 preview.jpg —— 启动壁纸无动画的根因）。 */
+async function healAnimPaths() {
+  // 一次性迁移（2026-10-16）：清掉指向已删除素材的启动壁纸残留
+  // （删除素材后 ID 会被复用，残留引用与新素材字面无法区分；此后删除素材会即时清理引用）
+  if (storage?.get('splashRefCleanup20261016') !== '1') {
+    storage?.set('splashRefCleanup20261016', '1')
+    if (storage?.get('splashSrc', null)) {
+      storage?.set('splashSrc', '')
+      storage?.set('splashId', '')
+      currentSplashId = null
+      log('已清理历史启动壁纸残留设置（原素材已被删除）')
+    }
+  }
+  for (const [key, label] of [['srcPath', '对话'], ['splashSrc', '启动']]) {
+    const v = storage?.get(key, null)
+    if (typeof v !== 'string' || !v) continue
+    const fixed = await resolveAnimSrc(v)
+    if (fixed !== v) {
+      storage?.set(key, fixed)
+      log(`已纠正${label}壁纸源为动图：${fixed}`)
+    }
+  }
+}
+
+/** 启动 Splash：原图铺满展现（不加遮罩/透明度/取色），从应用启动一直保持到
+ *  进入对话（composer 输入区出现）再淡出。每次应用启动只播一次（热重载不重复）。 */
+function showSplashOverlay() {
+  const src = storage?.get('splashSrc', null)
+  currentSplashId = storage?.get('splashId', null) || null
+  if (typeof src !== 'string' || !src) return
+
+  try {
+    if (sessionStorage.getItem(SPLASH_SESSION_KEY)) return   // 热重载不重复播
+    sessionStorage.setItem(SPLASH_SESSION_KEY, '1')
+  } catch { /* sessionStorage 不可用则照常显示 */ }
+  const bridge = window.hermesDesktop?.readFileDataUrl
+  if (typeof bridge !== 'function') return
+  const overlay = document.createElement('div')
+  overlay.id = SPLASH_ID
+  document.body.append(overlay)   // 先占位（盖住 CONNECTING 加载页）：读图失败直接移除，不阻塞启动
+  let shownAt = 0
+  let done = false
+  let timer = null
+  const finish = () => {
+    if (done) return
+    done = true
+    if (timer) clearInterval(timer)
+    overlay.classList.remove('show')
+    setTimeout(() => overlay.remove(), 520)
+  }
+  // 退出条件：用户真的“看得见”对话（composer 就绪且未被启动浮层盖住）且至少展示 1.2s；30s 兜底
+  timer = setInterval(() => {
+    if (done || !shownAt) return
+    const elapsed = Date.now() - shownAt
+    if ((chatActuallyVisible() && elapsed >= 1200) || elapsed >= 30000) finish()
+  }, 200)
+  bridge(src).then(dataUrl => {
+    if (disposed) { done = true; if (timer) clearInterval(timer); overlay.remove(); return }
+    overlay.style.backgroundImage = `url("${dataUrl}")`
+    requestAnimationFrame(() => {
+      overlay.classList.add('show')
+      shownAt = Date.now()
+    })
+  }).catch(err => {
+    log('启动壁纸读取失败（文件可能已删除），跳过 Splash: ' + (err?.message || err))
+    done = true
+    if (timer) clearInterval(timer)
+    overlay.remove()
+  })
 }
 
 // ── 顶栏按钮（类名实时拷贝原生，保证风格一致）──
@@ -1483,6 +1778,9 @@ export default {
     panelEl = buildPanel()
     document.body.append(panelEl)
     loadLibraryConfigIntoPanel().catch(() => {})   // 回填壁纸库根目录配置（后端未就绪则静默）
+    await healAnimPaths().catch(() => {})           // 自愈：历史设置的 preview 路径纠正为动图源
+    // 启动壁纸 Splash：每次应用启动只播一次（热重载不重复），保持到进入对话再淡出
+    try { showSplashOverlay() } catch (e) { log('启动 Splash 失败: ' + (e?.message || e)) }
 
     // 重启/统一包同步会整目录重建 desktop-plugins/<id>/，运行时索引与缩略图随之被清。
     // 探测到索引缺失时让后端静默重建（后台线程 + 增量缩略图），无需用户手点【刷新壁纸索引】。
@@ -1583,6 +1881,7 @@ export default {
       browserEl?.remove()
       browserEl = null
       weIndex = null
+      document.getElementById(SPLASH_ID)?.remove()
       document.getElementById(UI_ID)?.remove()
     })
   }
