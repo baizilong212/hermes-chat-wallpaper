@@ -812,6 +812,22 @@ def delete_wallpaper(body: dict):
             (thumbs_dir / f"{wid}{ext}").unlink()
         except OSError:
             pass
+    # 同步从磁盘索引移除该条目（接口返回前完成，不依赖异步重建）：
+    # 旧逻辑只触发异步全量重建，重建完成前（或失败时）磁盘索引仍残留已删条目，
+    # 前端重载后显示空白卡片（2026-10-16 实测）。此处外科手术式移除即时生效，
+    # 异步重建照常跑，负责缩略图孤儿清理等后续整理。
+    try:
+        idx_path = Path(plugin_dir) / "we-index.json"
+        data = json.loads(idx_path.read_text(encoding="utf-8"))
+        items = data.get("items")
+        if isinstance(items, list):
+            kept = [it for it in items if it.get("id") != wid]
+            if len(kept) != len(items):
+                data["items"] = kept
+                data["n"] = len(kept)
+                _write_json_atomic(idx_path, data)
+    except (OSError, ValueError, TypeError, KeyError):
+        pass  # 索引缺失/损坏：交给后续全量重建处理，不影响删除结果
     _start_index(plugin_dir, "delete")
     return {"ok": True, "deleted": wid}
 

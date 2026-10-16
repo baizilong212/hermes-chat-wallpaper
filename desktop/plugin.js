@@ -1182,7 +1182,19 @@ async function onDeleteWallpaper(it) {
       const grid = browserEl?.querySelector('.wb-grid')
       if (grid) updateCardBadges(grid)
     }
-    await reloadIndexFromDisk()
+    // 立即从内存索引移除该条目并重绘（不等异步重建往返）：
+    // 旧逻辑删除后立刻重读磁盘索引，但索引重建是异步的，读到的仍是含已删条目的
+    // 旧索引，而缩略图已被后端清掉 → 空白卡片残留（2026-10-16 实测）。
+    // 重建完成后的轮询（finished_at 链）会再从磁盘对账一次，两层保障。
+    if (weIndex && Array.isArray(weIndex.items) && weIndex.items.some(x => x.id === it.id)) {
+      weIndex.items = weIndex.items.filter(x => x.id !== it.id)
+      weIndex.n = weIndex.items.length
+      const titleEl = browserEl?.querySelector('.wb-title')
+      if (titleEl) titleEl.textContent = `壁纸库（${weIndex.n}）`
+      const search = browserEl?.querySelector('.wb-search')
+      wePage = 0
+      renderWeGrid(search ? search.value.trim() : '')
+    }
     startIndexPolling()
   } catch (e) {
     errorModal('删除失败', apiErrorText(e))
