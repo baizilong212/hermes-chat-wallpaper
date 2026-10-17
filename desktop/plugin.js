@@ -1037,6 +1037,10 @@ async function pollIndexStatus() {
   }
   if (!animErr) lastAnimError = ''
   if (st.anim && st.anim.running) {
+    // 转动图期间不禁用工具按钮：后端会把刷新排队、把上传串行到转换锁后，
+    // 若在此锁死按钮，用户点【刷新索引】后（onRefreshIndexClick 先禁用）要等整段
+    // 转码结束才能恢复，表现为按钮“卡在失焦”。仅当索引构建真在跑时保持禁用。
+    if (!st.running) setToolsDisabled(false)
     setBrowserStatus('⏳ 正在转动图…（本地转码，完成后列表自动刷新）')
     return
   }
